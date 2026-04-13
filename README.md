@@ -1,6 +1,6 @@
 # Inauguration Data Uploader
 
-A tool for uploading inauguration data to Firebase from the **company tab**. The data is written to the following structure:
+A tool for uploading inauguration data to Firebase from either company totals or row-level committee/contributor exports. The data is written to the following structure:
 
 ```
 brands
@@ -9,13 +9,13 @@ brands
           └─ inauguration: {amount}
 ```
 
-## Current Focus: Company Tab
+## Supported Inputs
 
-This tool is designed for the company tab which has a simple two-column format:
-- **Company Name** - The name of the company
-- **Amount** - The inauguration donation amount
+This tool supports both:
+- **Company totals** - a simple two-column company/amount format
+- **Committee/contributor exports** - row-level contribution files that include employer or contributor names and contribution amounts
 
-The individual people tab (individual inauguration / executives) is more complex with two potential data formats and will be handled separately in the future. These formats are not yet confirmed.
+PAC donations are ingested with **no minimum amount floor**. Every contribution row is retained, matched, and rolled up into a single total per brand before upload.
 
 ## Setup
 
@@ -80,6 +80,8 @@ The CSV file from the **company tab** should contain two columns: company name a
 - `amount` or `Amount` (most common)
 - `inauguration` or `Inauguration`
 - `value` or `Value`
+- `contribution_receipt_amount` or `Contribution Receipt Amount`
+- `contributor_aggregate_ytd` or `Contributor Aggregate YTD`
 
 **Ticker symbol columns (optional, if available):**
 - `ticker` or `Ticker`
@@ -101,6 +103,15 @@ Acme Corp,ACME,50000
 Tech Inc,TECH,75000
 Apple Inc,AAPL,100000
 ```
+
+**Committee/Contributor Example:**
+```csv
+committee_id,committee_name,contributor_name,contributor_employer,contribution_receipt_amount
+C001,Inaugural Committee,Example Corp PAC,,250
+C001,Inaugural Committee,Jane Doe,Example Corp,500
+```
+
+For committee/contributor rows, the uploader prefers `contributor_employer` for attribution and falls back to `contributor_name` when employer is blank, which ensures PAC donations are still captured.
 
 Note: The tool works with just company name and amount. Ticker symbols are optional but provide more reliable matching if available.
 
@@ -165,11 +176,8 @@ The tool provides:
 
 ## Notes
 
-- **Current focus**: Company tab only (simple two-column format: company name, amount)
-- **Future**: Individual people tab will be handled separately after confirming data structure requirements
-  - Potential Format 1: Full Name, Amount, Company, Job Title, Trump Assignment
-  - Potential Format 2: Committee/Contributor data with multiple fields (committee_id, contributor_name, contributor_employer, contribution_receipt_amount, contributor_aggregate_ytd, etc.)
-  - Note: These formats are not yet confirmed and may be subject to change
+- **No PAC floor**: The uploader does not apply a `$1000` or any other minimum amount threshold
+- **Row-level rollups**: If multiple contribution rows match the same brand, they are summed before upload so no donation is lost to overwrite behavior
 - The tool uses fuzzy matching (RapidFuzz library) to handle variations in company names
 - Ticker symbols provide the most reliable matching method - use them when available
 - Unmatched companies are reported but skipped by default
@@ -179,4 +187,3 @@ The tool provides:
 - The inauguration amount overwrites any existing value for that brand
 - Match scores are shown for fuzzy and partial matches to help verify correctness
 - No overlap between tabs - some donations appear in one tab but not the other
-

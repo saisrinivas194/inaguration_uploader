@@ -1,82 +1,73 @@
 # Project Status
 
-## Current Implementation: Company Tab Only
+## Current Implementation
 
-The uploader tool is currently focused on the company tab, which has a simple two-column format:
-- **Company Name** - Name of the company
-- **Amount** - Inauguration donation amount
+The uploader supports both:
+- **Company totals** - Name of the company plus donation amount
+- **Committee/contributor rows** - Employer or contributor name plus contribution amount
 
 ## Current Functionality
 
-**Company Tab Upload**
+**Inauguration Upload**
 - Reads CSV files with company name and amount columns
+- Reads committee/contributor exports with `contribution_receipt_amount`
 - Automatically detects column names (company/Company, amount/Amount, etc.)
+- Falls back from employer to contributor name so PAC donations are still attributed when employer is blank
 - Matches companies to brands in Firebase using:
   - Ticker symbols (if available, most reliable)
   - Fuzzy name matching (handles variations like "Apple Inc" vs "Apple Incorporated")
+- Rolls up all matched contribution rows per brand before upload
 - Uploads amounts to: `brands/{brand_id}/influence/inauguration`
 
 ## Data Structure
 
-### Company Tab (Current Focus)
+### Company Totals
 ```
 company,amount
 Acme Corp,50000
 Tech Inc,75000
 ```
 
-### Individual People Tab (Future - Unconfirmed)
-- More complex structure with two potential data formats
-- Individual inauguration / executives data
-- Currently no upload functionality
-- Will be implemented after confirming data structure requirements
+### Committee/Contributor Rows
+```
+committee_id,committee_name,contributor_name,contributor_employer,contribution_receipt_amount
+C001,Inaugural Committee,Example Corp PAC,,250
+C001,Inaugural Committee,Jane Doe,Example Corp,500
+```
 
-**Potential Format 1 - Individual People Tab:**
-- Full Name
-- Amount
-- Company
-- Job Title
-- Trump Assignment
-
-**Potential Format 2 - Committee/Contributor Data:**
+Supported fields include:
 - committee_id
 - committee_name
 - contributor_name
-- contributor_first_name
-- contributor_last_name
-- contributor_zip
 - contributor_employer
-- contributor_occupation
-- contributor_id
 - contribution_receipt_date
 - contribution_receipt_amount
 - contributor_aggregate_ytd
 
-Note: These formats are not yet confirmed and may be subject to change.
-
 ## Key Points
 
-1. **No Overlap**: Some donations appear in company tab but not individual people tab, and vice versa
-2. **Simple Format**: Company tab only requires company name and amount
-3. **Exact Amounts**: May not all be in company tab - eventually may need to handle both tabs
-4. **Executive vs PAC**: Not needed - only total amounts matter
-5. **Ticker Optional**: Works with just company name, but ticker symbols improve matching accuracy
+1. **No PAC floor**: There is no `$1000` minimum or any other PAC donation threshold
+2. **All contributions counted**: Row-level files are summed by brand before upload
+3. **Executive vs PAC**: Not needed for storage - only final brand totals matter
+4. **Ticker Optional**: Works with just company name, but ticker symbols improve matching accuracy
 
 ## Implementation Status
 
-1. **Company tab uploader** - Complete
-2. **Individual people tab details** - Pending data structure confirmation
-3. **Individual people tab uploader** - Pending implementation after requirements confirmed
+1. **Company totals uploader** - Complete
+2. **Committee/contributor uploader** - Complete
+3. **Additional source-specific mappings** - Can be extended if new column variants appear
 
 ## Usage
 
 ```bash
-# Test with company tab data
+# Test with company totals data
 python uploader.py company_tab.csv --dry-run
 
-# Upload company tab data
+# Upload committee/contributor data
+python uploader.py pac_rows.csv --dry-run
+
+# Upload finalized data
 python uploader.py company_tab.csv
 ```
 
-The tool automatically handles the simple two-column format from the company tab.
-
+The tool automatically handles both simple company totals and row-level contribution files.

@@ -2,7 +2,7 @@
 Company matching utility to match company names from external data to brand IDs in Firebase.
 Supports fuzzy matching and ticker symbol matching.
 """
-from typing import Dict, Optional, List, Tuple
+from typing import Any, Dict, Optional, List, Tuple
 from firebase_config import get_db
 from rapidfuzz import fuzz, process
 import re
@@ -240,9 +240,9 @@ def find_brand_id(
 
 
 def match_companies_to_brands(
-    company_data: List[Dict[str, any]],
+    company_data: List[Dict[str, Any]],
     fuzzy_threshold: int = 85
-) -> Dict[str, Dict]:
+) -> Dict[str, Any]:
     """
     Match a list of companies to brand IDs using fuzzy matching and ticker symbols.
     
@@ -256,11 +256,11 @@ def match_companies_to_brands(
         Dictionary with matched companies, unmatched companies, and statistics
     """
     brands = get_all_brands()
-    matches = {}
+    matches = []
     unmatched = []
     match_details = []
     
-    for item in company_data:
+    for index, item in enumerate(company_data):
         # Try different possible keys for company name
         company_name = (
             item.get('company') or 
@@ -293,15 +293,16 @@ def match_companies_to_brands(
         
         if result:
             brand_id, score, match_type = result
-            identifier = company_name or ticker or f"Unknown-{len(matches)}"
+            identifier = company_name or ticker or f"Unknown-{index}"
             
-            matches[identifier] = {
+            matches.append({
+                'identifier': identifier,
                 'brand_id': brand_id,
                 'data': item,
                 'match_score': score,
                 'match_type': match_type,
                 'matched_by': 'ticker' if ticker and match_type == 'ticker' else 'name'
-            }
+            })
             
             match_details.append({
                 'identifier': identifier,
@@ -328,4 +329,3 @@ def match_companies_to_brands(
         'matched_count': len(matches),
         'unmatched_count': len(unmatched)
     }
-
