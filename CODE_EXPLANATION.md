@@ -110,7 +110,7 @@ The tool follows a modular architecture with three main components:
 - Main function for matching multiple companies
 - Processes list of company records
 - Returns dictionary with:
-  - `matched`: List of matched contribution/company records
+  - `matched`: Dictionary of matched companies
   - `unmatched`: List of unmatched companies
   - `match_details`: Detailed match information
   - Statistics: total, matched_count, unmatched_count
@@ -136,9 +136,13 @@ For each company:
 
 #### Constants:
 
+**`INDIVIDUAL_PEOPLE_FORMAT1_COLUMNS`**
+- Future format definition (not yet implemented)
+- Columns: Full Name, Amount, Company, Job Title, Trump Assignment
+
 **`COMMITTEE_CONTRIBUTOR_FORMAT2_COLUMNS`**
-- Supported committee/contributor format reference
-- Documents the expected committee/contributor column set
+- Future format definition (not yet implemented)
+- 12 columns for committee/contributor data
 
 #### Key Functions:
 
@@ -146,11 +150,9 @@ For each company:
 - Parses CSV files containing inauguration data
 - Automatically detects column names:
   - Company: 'company', 'Company', 'company_name', etc.
-  - Employer/contributor fallback: 'contributor_employer', 'contributor_name', etc.
   - Ticker: 'ticker', 'Ticker', 'ticker_symbol', etc.
-  - Amount: 'amount', 'Amount', 'inauguration', 'contribution_receipt_amount', etc.
+  - Amount: 'amount', 'Amount', 'inauguration', etc.
 - Handles amount formatting (removes $, commas)
-- Applies no minimum PAC threshold
 - Returns list of dictionaries with parsed data
 - Skips invalid rows with warnings
 
@@ -161,13 +163,7 @@ For each company:
   - Dictionary with 'data' key
   - Dictionary with 'companies' key
   - Single object (converts to list)
-- Normalizes row-level committee/contributor records into uploader format
 - Returns list of dictionaries
-
-**`aggregate_matches_by_brand(matched_items)`**
-- Rolls up matched rows by `brand_id`
-- Sums all contribution amounts for the same brand
-- Prevents later uploads from overwriting earlier row-level contributions
 
 **`upload_inauguration_data(brand_id, amount, dry_run, verbose)`**
 - Uploads single inauguration amount to Firebase
@@ -181,10 +177,9 @@ For each company:
 - **Process flow:**
   1. Parse file (CSV or JSON)
   2. Match companies to brands
-  3. Roll matched rows up by brand
-  4. Display match statistics
-  5. Upload brand totals
-  6. Return statistics
+  3. Display match statistics
+  4. Upload matched data
+  5. Return statistics
 - Provides detailed progress reporting
 - Shows match type breakdown
 - Handles unmatched companies
@@ -219,11 +214,9 @@ For each company:
    │   ├─→ find_brand_id_by_ticker() (if ticker available)
    │   └─→ find_brand_id_by_name() (fuzzy matching)
    ↓
-6. aggregate_matches_by_brand() sums rows for each matched brand
+6. upload_inauguration_data() uploads each match
    ↓
-7. upload_inauguration_data() uploads each brand total
-   ↓
-8. Statistics and results displayed
+7. Statistics and results displayed
 ```
 
 ## Firebase Data Structure
@@ -358,13 +351,14 @@ python uploader.py company_data.csv --fuzzy-threshold 75
 python uploader.py company_data.csv --show-unmatched
 ```
 
-## Extension Points
+## Future Implementation
 
-The uploader is ready for additional source-specific column aliases if new exports appear. The main extension points are:
+The code includes placeholders for future individual people tab formats:
 
-1. Add new company/employer aliases in `uploader.py`
-2. Add new amount column aliases in `uploader.py`
-3. Add new brand alias data in Firebase to improve matching coverage
+1. **Format 1**: Full Name, Amount, Company, Job Title, Trump Assignment
+2. **Format 2**: Committee/Contributor data with 12 fields
+
+These are documented but not yet implemented, pending data structure confirmation.
 
 ## Code Quality
 
@@ -393,4 +387,5 @@ The uploader is ready for additional source-specific column aliases if new expor
 - Column name detection can be extended for new formats
 - Matching algorithms can be enhanced with additional strategies
 - Future formats can be added by implementing the placeholder functions
+
 

@@ -4,7 +4,7 @@ Main uploader script for inauguration data.
 import csv
 import json
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from firebase_config import initialize_firebase, get_db
 from company_matcher import match_companies_to_brands
 
@@ -36,134 +36,20 @@ COMMITTEE_CONTRIBUTOR_FORMAT2_COLUMNS = [
 ]
 
 
-COMPANY_NAME_COLUMNS = [
-    'company',
-    'Company',
-    'company_name',
-    'Company Name',
-    'name',
-    'Name',
-    'brand',
-    'Brand',
-    'contributor_employer',
-    'Contributor Employer',
-    'employer',
-    'Employer'
-]
-
-COMPANY_FALLBACK_COLUMNS = [
-    'contributor_name',
-    'Contributor Name',
-    'donor_name',
-    'Donor Name',
-    'pac_name',
-    'PAC Name'
-]
-
-TICKER_COLUMNS = [
-    'ticker',
-    'ticker_symbol',
-    'symbol',
-    'Ticker',
-    'Ticker Symbol',
-    'Symbol'
-]
-
-AMOUNT_COLUMNS = [
-    'amount',
-    'Amount',
-    'inauguration',
-    'Inauguration',
-    'value',
-    'Value',
-    'contribution_receipt_amount',
-    'Contribution Receipt Amount',
-    'contributor_aggregate_ytd',
-    'Contributor Aggregate YTD'
-]
-
-
-def first_present_value(row: Dict[str, Any], column_names: List[str]) -> Optional[Any]:
-    """
-    Return the first non-empty value from a row for the provided column names.
-    """
-    for column_name in column_names:
-        value = row.get(column_name)
-        if value is None:
-            continue
-
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                continue
-
-        return value
-
-    return None
-
-
-def parse_amount_value(amount: Any) -> Optional[float]:
-    """
-    Parse an amount field into a float.
-    """
-    if amount is None:
-        return None
-
-    cleaned_amount = str(amount).strip()
-    if not cleaned_amount:
-        return None
-
-    cleaned_amount = cleaned_amount.replace(',', '').replace('$', '')
-    if cleaned_amount.startswith('(') and cleaned_amount.endswith(')'):
-        cleaned_amount = f"-{cleaned_amount[1:-1]}"
-
-    try:
-        return float(cleaned_amount)
-    except ValueError:
-        return None
-
-
-def normalize_input_record(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """
-    Normalize a raw input row into the uploader's company/ticker/amount shape.
-
-    This supports both pre-aggregated company totals and row-level contribution
-    exports such as committee/contributor data. For committee contributor files,
-    employer is preferred for attribution, and contributor name is used as a
-    fallback so PAC donations are still captured when employer is blank.
-    """
-    company_name = first_present_value(row, COMPANY_NAME_COLUMNS)
-    if not company_name:
-        company_name = first_present_value(row, COMPANY_FALLBACK_COLUMNS)
-
-    ticker = first_present_value(row, TICKER_COLUMNS)
-    amount = parse_amount_value(first_present_value(row, AMOUNT_COLUMNS))
-
-    if (not company_name and not ticker) or amount is None:
-        return None
-
-    record = {'amount': amount}
-    if company_name:
-        record['company'] = str(company_name).strip()
-    if ticker:
-        record['ticker'] = str(ticker).strip()
-
-    contributor_name = first_present_value(row, ['contributor_name', 'Contributor Name'])
-    if contributor_name:
-        record['source_name'] = str(contributor_name).strip()
-
-    return record
-
-
 def parse_csv_file(file_path: str) -> List[Dict]:
     """
     Parse CSV file containing inauguration data.
     
-    Expected formats:
-    - Company totals: company name and inauguration amount
-    - Committee/contributor rows: contributor employer/name and contribution amount
-    The parser detects common column names automatically and does not apply any
-    minimum amount threshold, so all PAC donations are retained.
+    Expected format: CSV with columns for company name and inauguration amount.
+    Simple company tab format: two columns (company name, amount).
+    Will try to detect common column names automatically.
+    
+    Note: Individual people tab formats are not yet implemented. Two potential formats:
+    - Format 1: Full Name, Amount, Company, Job Title, Trump Assignment
+    - Format 2: committee_id, committee_name, contributor_name, contributor_first_name,
+                contributor_last_name, contributor_zip, contributor_employer,
+                contributor_occupation, contributor_id, contribution_receipt_date,
+                contribution_receipt_amount, contributor_aggregate_ytd
     
     Args:
         file_path: Path to CSV file
@@ -177,26 +63,61 @@ def parse_csv_file(file_path: str) -> List[Dict]:
         reader = csv.DictReader(f)
         
         for row in reader:
-            record = normalize_input_record(row)
-            if record:
-                data.append(record)
-            else:
-                identifier = (
-                    first_present_value(row, COMPANY_NAME_COLUMNS) or
-                    first_present_value(row, COMPANY_FALLBACK_COLUMNS) or
-                    first_present_value(row, TICKER_COLUMNS) or
-                    "Unknown"
-                )
-                amount = first_present_value(row, AMOUNT_COLUMNS)
-                if amount:
+            # Detect company name column (prioritize common column names)
+            company_name = (
+                row.get('company') or 
+                row.get('Company') or
+                row.get('company_name') or 
+                row.get('Company Name') or
+                row.get('name') or
+                row.get('Name') or
+                row.get('brand') or
+                row.get('Brand')
+            )
+            
+            # Detect ticker symbol column
+            ticker = (
+                row.get('ticker') or
+                row.get('ticker_symbol') or
+                row.get('symbol') or
+                row.get('Ticker') or
+                row.get('Ticker Symbol') or
+                row.get('Symbol')
+            )
+            
+            # Detect amount column (prioritize common column names)
+            amount = (
+                row.get('amount') or
+                row.get('Amount') or
+                row.get('inauguration') or
+                row.get('Inauguration') or
+                row.get('value') or
+                row.get('Value')
+            )
+            
+            if (company_name or ticker) and amount:
+                try:
+                    # Convert amount to numeric value
+                    amount_value = float(str(amount).replace(',', '').replace('$', '').strip())
+                    record = {
+                        'amount': amount_value
+                    }
+                    if company_name:
+                        record['company'] = company_name.strip()
+                    if ticker:
+                        record['ticker'] = ticker.strip()
+                    data.append(record)
+                except ValueError:
+                    identifier = company_name or ticker or "Unknown"
                     print(f"[WARNING] Could not parse amount '{amount}' for '{identifier}'")
+                    continue
     
     return data
 
 
-# Reference parser stubs for additional source-specific formats.
-# See INDIVIDUAL_PEOPLE_FORMAT1_COLUMNS and COMMITTEE_CONTRIBUTOR_FORMAT2_COLUMNS
-# for documented column definitions if we need dedicated parsers later.
+# Future Implementation: Individual People Tab Parsers
+# These functions are reserved for future implementation once data structure requirements are confirmed.
+# See INDIVIDUAL_PEOPLE_FORMAT1_COLUMNS and COMMITTEE_CONTRIBUTOR_FORMAT2_COLUMNS for expected column definitions.
 #
 # def parse_individual_people_format1(file_path: str) -> List[Dict]:
 #     """
@@ -260,41 +181,8 @@ def parse_json_file(file_path: str) -> List[Dict]:
         else:
             # Convert single dictionary to list
             data = [data]
-    normalized_data = []
-    for row in data:
-        if not isinstance(row, dict):
-            continue
-
-        record = normalize_input_record(row)
-        if record:
-            normalized_data.append(record)
-
-    return normalized_data
-
-
-def aggregate_matches_by_brand(matched_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Roll up matched contribution rows by brand so uploads store one total per brand.
-    """
-    aggregated: Dict[str, Dict[str, Any]] = {}
-
-    for match in matched_items:
-        brand_id = match['brand_id']
-        brand_entry = aggregated.setdefault(
-            brand_id,
-            {
-                'brand_id': brand_id,
-                'amount': 0.0,
-                'identifiers': [],
-                'contribution_count': 0
-            }
-        )
-
-        brand_entry['amount'] += match['data'].get('amount', 0.0)
-        brand_entry['identifiers'].append(match['identifier'])
-        brand_entry['contribution_count'] += 1
-
-    return list(aggregated.values())
+    
+    return data
 
 
 def upload_inauguration_data(brand_id: str, amount: float, dry_run: bool = False, verbose: bool = True) -> bool:
@@ -345,9 +233,10 @@ def upload_from_file(
     """
     Upload inauguration data from a file (CSV or JSON).
     
-    Supports both pre-aggregated company totals and row-level committee/
-    contributor exports. Row-level contributions are rolled up by matched brand
-    before upload, and no PAC minimum threshold is applied.
+    Currently supports company tab format only (company name, amount).
+    Individual people tab formats are not yet implemented.
+    See INDIVIDUAL_PEOPLE_FORMAT1_COLUMNS and COMMITTEE_CONTRIBUTOR_FORMAT2_COLUMNS
+    for potential future formats (not yet confirmed).
     
     Args:
         file_path: Path to data file
@@ -407,9 +296,6 @@ def upload_from_file(
             if len(matches['unmatched']) > 10:
                 print(f"    ... and {len(matches['unmatched']) - 10} more")
     
-    aggregated_matches = aggregate_matches_by_brand(matches['matched'])
-    print(f"  Rollup: {len(aggregated_matches)} brand totals ready for upload")
-
     # Show match details if requested
     if show_match_details and matches['match_details']:
         print("\nMatch Details:")
@@ -439,30 +325,33 @@ def upload_from_file(
     uploaded = 0
     failed = 0
     
-    for match_info in aggregated_matches:
+    for identifier, match_info in matches['matched'].items():
         brand_id = match_info['brand_id']
-        amount = match_info['amount']
-        identifier = match_info['identifiers'][0] if match_info['identifiers'] else brand_id
-        contribution_count = match_info['contribution_count']
-
+        amount = match_info['data'].get('amount')
+        match_type = match_info.get('match_type', 'unknown')
+        match_score = match_info.get('match_score', 0)
+        
         if amount is None:
             print(f"  [WARNING] Skipping {identifier}: No amount found")
             continue
         
-        rollup_info = ""
-        if contribution_count > 1:
-            rollup_info = f" [{contribution_count} contributions rolled up]"
+        # Show match info in upload message
+        match_info_str = ""
+        if match_type in ['fuzzy', 'partial']:
+            match_info_str = f" [{match_type} {match_score:.1f}%]"
+        elif match_type == 'ticker':
+            match_info_str = " [ticker]"
         
         success = upload_inauguration_data(brand_id, amount, dry_run=dry_run, verbose=False)
         if success:
             uploaded += 1
             if not dry_run:
-                print(f"  [OK] {identifier}{rollup_info} → brands/{brand_id}/influence/inauguration = {amount}")
+                print(f"  [OK] {identifier}{match_info_str} → brands/{brand_id}/influence/inauguration = {amount}")
             else:
-                print(f"  [DRY RUN] {identifier}{rollup_info} → brands/{brand_id}/influence/inauguration = {amount}")
+                print(f"  [DRY RUN] {identifier}{match_info_str} → brands/{brand_id}/influence/inauguration = {amount}")
         else:
             failed += 1
-            print(f"  [ERROR] Failed to upload {identifier}{rollup_info}")
+            print(f"  [ERROR] Failed to upload {identifier}{match_info_str}")
     
     print(f"\nUpload complete!")
     print(f"  Successfully uploaded: {uploaded}")
@@ -472,7 +361,6 @@ def upload_from_file(
     return {
         'total': matches['total'],
         'matched': matches['matched_count'],
-        'matched_brands': len(aggregated_matches),
         'unmatched': matches['unmatched_count'],
         'uploaded': uploaded,
         'failed': failed,
@@ -584,3 +472,4 @@ Examples:
 
 if __name__ == '__main__':
     main()
+
